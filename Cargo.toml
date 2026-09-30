@@ -10,7 +10,7 @@ repository = "https://github.com/shashankswe2020-ux/whoop-mcp-rs"
 homepage = "https://shashankswe2020-ux.github.io/whoop-mcp/"
 documentation = "https://docs.rs/whoop-mcp"
 readme = "README.md"
-keywords = ["whoop", "mcp", "model-context-protocol", "health", "fitness"]
+keywords = ["whoop", "mcp", "mcp-server", "health", "fitness"]
 categories = ["command-line-utilities", "api-bindings"]
 include = ["src/**", "assets/**", "tests/**", "Cargo.toml", "README.md", "LICENSE", "CHANGELOG.md"]
 
