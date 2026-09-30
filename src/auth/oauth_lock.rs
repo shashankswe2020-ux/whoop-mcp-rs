@@ -150,14 +150,15 @@ fn quarantine_stale_lock(lock_directory: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg(unix)]
 fn create_lock_dir(dir: &Path) -> std::io::Result<()> {
-    let mut builder = std::fs::DirBuilder::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::DirBuilderExt;
-        builder.mode(0o700);
-    }
-    builder.create(dir)
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new().mode(0o700).create(dir)
+}
+
+#[cfg(not(unix))]
+fn create_lock_dir(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir(dir)
 }
 
 /// Acquire the cross-process lock guarding an interactive OAuth flow.
@@ -230,6 +231,7 @@ mod tests {
         assert!(!dir.join(OAUTH_FLOW_LOCK_DIRECTORY).exists());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn recovers_locks_from_dead_processes() {
         let dir = temp_dir();
