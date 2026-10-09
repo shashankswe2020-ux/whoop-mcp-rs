@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 - 2026-10-09
+
+- Successful setup now ends with an optional Buy Me a Coffee sponsorship link
+  for fresh installs, CLI client registration, and existing Claude Desktop
+  configurations.
+- Added regression coverage that keeps the sponsorship URL as the final setup
+  output line.
+- Rustfmt, strict Clippy, all 86 tests, and cross-platform GitHub CI pass.
+
 ## 0.1.0
 
 Initial Rust release, at feature parity with `whoop-ai-mcp` 0.8.4.

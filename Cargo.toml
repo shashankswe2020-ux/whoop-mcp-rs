@@ -1,6 +1,6 @@
 [package]
 name = "whoop-mcp"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.88"
 description = "Read-only WHOOP MCP server for recovery, sleep, HRV, strain, workouts, and personal health analytics in AI assistants (Rust port of whoop-ai-mcp)"
