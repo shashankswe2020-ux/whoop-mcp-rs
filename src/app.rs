@@ -371,7 +371,11 @@ const HELP: &str = "Usage: whoop-mcp [command]
 Commands:
   (none)              Start the MCP server (MCP_TRANSPORT=stdio|http|both)
   setup [options]     Configure credentials and an MCP client
-                      --client <claude-desktop|claude-code|codex|copilot>
+                      --client <target>
+                        Local: claude-desktop (alias: claude), claude-code,
+                               codex, copilot (alias: vscode), gemini-cli,
+                               cursor, openclaw, perplexity (macOS)
+                        Remote guidance: claude-web, chatgpt, grok (xAI API)
                       --client-id <id> --client-secret <secret>
                       --verify --telemetry <on|off>
   doctor [--json]     Local-only configuration diagnostics

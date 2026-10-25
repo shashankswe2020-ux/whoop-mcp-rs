@@ -5,8 +5,9 @@
 [![MIT license](https://img.shields.io/badge/license-MIT-555)](LICENSE)
 
 A read-only [WHOOP](https://www.whoop.com/) [MCP server](https://modelcontextprotocol.io/)
-for Claude Desktop, Claude Code, Codex, and GitHub Copilot, shipped as a single
-native binary.
+for Claude, Gemini CLI, Cursor, VS Code, OpenClaw, Perplexity on macOS, and other
+MCP clients, shipped as a single native binary. ChatGPT, Claude web/mobile, and
+the Grok xAI API require a remote deployment (see [client setup](#client-setup)).
 
 This is the Rust implementation of
 [`whoop-ai-mcp`](https://www.npmjs.com/package/whoop-ai-mcp)
@@ -54,6 +55,101 @@ Manual Claude Desktop configuration:
   }
 }
 ```
+
+## Client setup
+
+**Unreleased:** the additional targets below are available in source. Until the
+next crate release, use `cargo run -- setup --client=<target>` in this checkout.
+After publication, use `whoop-mcp setup --client=<target>`.
+
+| Assistant | Target | What setup does |
+|---|---|---|
+| Claude Desktop | `claude-desktop` or `claude` | Writes/merges the existing Desktop config with backup |
+| Claude Code | `claude-code` | Prints a registration command |
+| ChatGPT | `chatgpt` | Prints remote HTTPS + OAuth guidance, not a local launch config |
+| Claude web/mobile | `claude-web` | Prints remote HTTPS custom connector guidance |
+| Grok | `grok` | Prints an **xAI API** remote MCP tool example; consumer Grok chat is not verified |
+| Perplexity | `perplexity` | Prints a local launch command for the **macOS app + PerplexityXPC helper** |
+| Gemini CLI | `gemini-cli` | Prints `mcpServers.whoop` for `~/.gemini/settings.json` |
+| Cursor | `cursor` | Prints `mcpServers.whoop` for `~/.cursor/mcp.json` |
+| VS Code / Copilot | `vscode` or `copilot` | Prints `code --add-mcp` |
+| OpenClaw | `openclaw` | Prints native `mcp.servers.whoop` for Settings > MCP |
+| Codex | `codex` | Prints a registration command; distinct from ChatGPT |
+
+For example, after installing a release with these targets:
+
+```bash
+whoop-mcp setup --client=gemini-cli
+whoop-mcp setup --client=cursor
+whoop-mcp setup --client=vscode
+whoop-mcp setup --client=openclaw
+whoop-mcp setup --client=perplexity
+```
+
+Merge printed JSON without replacing other settings or servers. Setup only writes
+Claude Desktop's config; it does not automatically install or register other
+clients. Keep output private: it includes WHOOP credentials and telemetry
+settings. Restrict config file permissions and never commit credentials.
+Printed shell commands use POSIX quoting, not PowerShell/cmd.exe syntax.
+The binary's absolute path must remain accessible to the client; no Node.js
+runtime is needed for the Rust server.
+
+For Perplexity, install its helper, open Plugins > Add custom > Simple, name the
+server `whoop`, paste the printed `env ...` command, save, wait for **Running**,
+and enable it under **Sources**. Non-macOS/web clients need Perplexity's remote
+connector workflow and appropriate account access instead.
+
+For OpenClaw, use a current version with native MCP support, not the separate
+mcporter registry. Merge the fragment in Settings > MCP's scoped config editor.
+The binary and WHOOP authorization must exist on the **Gateway host**; a path on
+your laptop is not sufficient for a remote Gateway. Then run
+`openclaw mcp doctor whoop --probe`.
+
+### Claude web/mobile and ChatGPT quick setup
+
+```bash
+whoop-mcp setup --client=claude-web
+whoop-mcp setup --client=chatgpt
+whoop-mcp setup --client=grok
+```
+
+These targets print **guidance only**. They do not prompt for secrets, write
+configuration, deploy a server, or verify a client connection. Local-only flags
+(`--verify`, credential flags, `--config-path`, `--telemetry`) are rejected.
+Availability depends on account, plan and workspace administrator policies.
+
+Deploy with `MCP_TRANSPORT=http` behind public HTTPS, keep `MCP_AUTH_TOKEN`
+authentication enabled, and securely complete WHOOP authorization on the host.
+Use `https://YOUR_HOST/mcp` as the endpoint, replacing the placeholder. Cloud
+clients cannot launch the local binary or reach your `localhost`.
+For OAuth clients, set `PUBLIC_URL`, `MCP_CONNECTOR_PASSWORD`, and an exact
+`ALLOWED_REDIRECT_URIS` allowlist. The existing connector registers **one static
+client**, default `whoop-mcp-connector` (`MCP_OAUTH_CLIENT_ID`): enter that ID in
+the client where supported. Clients requiring dynamic registration or another
+OAuth flow may need server changes outside this setup feature. Do not disable
+authentication to bypass incompatibilities.
+
+In ChatGPT, use a custom MCP app/connector with developer mode enabled and
+configure compatible OAuth; in Claude, add a custom connector under Settings >
+Connectors. Grok instructions apply to the xAI API's remote MCP tool, using its
+`authorization` field for `MCP_AUTH_TOKEN`, **not** a WHOOP token or the separate
+xAI API key. This is not certification of consumer Grok chat support.
+
+The [shared deployment guide](https://github.com/shashankswe2020-ux/whoop-mcp/blob/main/references/deployment.md)
+describes HTTPS, private persistent tokens, proxy and OAuth requirements.
+Its Docker/Node commands are for npm; run the Rust binary on your host instead.
+Neither implementation is a multi-user WHOOP relay.
+
+Configuration is based on official documentation; tests validate generated
+output, not live client accounts:
+[Claude](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp),
+[ChatGPT](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt),
+[xAI](https://docs.x.ai/developers/tools/remote-mcp),
+[Perplexity](https://www.perplexity.ai/help-center/en/articles/11502712-local-and-remote-mcps-for-perplexity),
+[Gemini CLI](https://geminicli.com/docs/tools/mcp-server/),
+[Cursor](https://cursor.com/docs/context/mcp),
+[VS Code](https://code.visualstudio.com/docs/copilot/customization/mcp-servers),
+[OpenClaw](https://docs.openclaw.ai/tools/mcp).
 
 ## Commands
 

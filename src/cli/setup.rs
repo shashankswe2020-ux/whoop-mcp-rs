@@ -4,7 +4,8 @@
 use super::config::{
     CLIENT_TARGETS, ServerEnv, claude_desktop_config_path, generate_claude_code_command,
     generate_claude_desktop_entry, generate_codex_command, generate_copilot_command,
-    merge_claude_desktop_config, server_command,
+    generate_local_setup_instructions, merge_claude_desktop_config, remote_setup_instructions,
+    server_command,
 };
 use crate::api::BoxFuture;
 use crate::auth::oauth::{OAuthConfig, authenticate, refresh_access_token, to_oauth_tokens};
@@ -65,7 +66,8 @@ pub fn parse_setup_args(argv: &[String]) -> Result<SetupOptions, String> {
                 let v = value()?;
                 if !CLIENT_TARGETS.contains(&v.as_str()) {
                     return Err(format!(
-                        "Invalid --client value: \"{v}\". Must be \"claude-desktop\", \"claude-code\", \"codex\", or \"copilot\"."
+                        "Invalid --client value: \"{v}\". Must be one of: {}.",
+                        CLIENT_TARGETS.join(", ")
                     ));
                 }
                 out.client = Some(v);
@@ -325,9 +327,10 @@ pub async fn run_setup(
     let target = match &options.client {
         Some(client) => client.clone(),
         None => {
-            let answer = deps.prompter.prompt(
-                "Target client (claude-desktop / claude-code / codex / copilot) [claude-desktop]: ",
-            );
+            let answer = deps.prompter.prompt(&format!(
+                "Target client ({}) [claude-desktop]: ",
+                CLIENT_TARGETS.join(" / "),
+            ));
             if answer.is_empty() {
                 "claude-desktop".into()
             } else {
@@ -337,6 +340,26 @@ pub async fn run_setup(
     };
     if !CLIENT_TARGETS.contains(&target.as_str()) {
         return Err(format!("Invalid client target: \"{target}\""));
+    }
+    let target = if target == "claude" {
+        "claude-desktop"
+    } else {
+        target.as_str()
+    };
+    if let Some(instructions) = remote_setup_instructions(target) {
+        if options.verify
+            || options.client_id.is_some()
+            || options.client_secret.is_some()
+            || options.config_path.is_some()
+            || options.telemetry.is_some()
+        {
+            return Err("Credential, --verify, --config-path and --telemetry options only apply to local client setup.".into());
+        }
+        deps.prompter.write(&instructions);
+        return Ok(Map::from_iter([(
+            "WHOOP_MCP_TELEMETRY".into(),
+            Value::from("0"),
+        )]));
     }
     let desktop_path = options
         .config_path
@@ -432,7 +455,7 @@ pub async fn run_setup(
     env.extend(consent.clone());
 
     let command = deps.command.clone();
-    match target.as_str() {
+    match target {
         "claude-code" => {
             deps.prompter
                 .write("\nRun this command in your shell to register the server:\n\n");
@@ -447,7 +470,7 @@ pub async fn run_setup(
             deps.prompter
                 .write(&format!("  {}\n\n", generate_codex_command(&env, &command)));
         }
-        "copilot" => {
+        "copilot" | "vscode" => {
             deps.prompter.write(
                 "\nRun this command to register the server with GitHub Copilot in VS Code:\n\n",
             );
@@ -456,7 +479,14 @@ pub async fn run_setup(
                 generate_copilot_command(&env, &command)
             ));
         }
-        _ => write_claude_desktop_config(&desktop_path, &env, &command, deps.prompter, false)?,
+        "claude-desktop" => {
+            write_claude_desktop_config(&desktop_path, &env, &command, deps.prompter, false)?;
+        }
+        _ => {
+            let instructions = generate_local_setup_instructions(target, &env, &command)
+                .ok_or_else(|| format!("No setup instructions for client: {target}"))?;
+            deps.prompter.write(&format!("\n{instructions}\n"));
+        }
     }
     Ok(consent)
 }
@@ -685,6 +715,135 @@ mod tests {
         };
         let result = run_setup(&options, &mut deps).await;
         (result, prompter.output)
+    }
+
+    #[test]
+    fn parses_additional_clients() {
+        for target in [
+            "claude",
+            "claude-web",
+            "chatgpt",
+            "grok",
+            "perplexity",
+            "gemini-cli",
+            "cursor",
+            "vscode",
+            "openclaw",
+        ] {
+            assert_eq!(
+                parse_setup_args(&args(&[&format!("--client={target}")]))
+                    .unwrap()
+                    .client
+                    .as_deref(),
+                Some(target)
+            );
+            assert_eq!(
+                parse_setup_args(&args(&["--client", target]))
+                    .unwrap()
+                    .client
+                    .as_deref(),
+                Some(target)
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_guidance_needs_no_credentials_or_authentication() {
+        for target in ["claude-web", "chatgpt", "grok"] {
+            let (result, output) = run(
+                SetupOptions {
+                    client: Some(target.into()),
+                    ..Default::default()
+                },
+                &[],
+                &[],
+                false,
+            )
+            .await;
+            assert_eq!(
+                result.unwrap().get("WHOOP_MCP_TELEMETRY"),
+                Some(&Value::from("0"))
+            );
+            assert!(output.contains("https://YOUR_HOST/mcp"));
+            assert!(output.contains("not deployed or verified"));
+            assert!(!output.contains("WHOOP Client Secret"));
+            assert!(!output.contains("Share this usage metadata?"));
+            assert!(output.contains(if target == "grok" { "xAI API" } else { "OAuth" }));
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_guidance_rejects_local_only_options() {
+        for flag in [
+            "--verify",
+            "--client-id=id",
+            "--client-secret=secret",
+            "--config-path=x",
+            "--telemetry=on",
+        ] {
+            let options = parse_setup_args(&args(&["--client=chatgpt", flag])).unwrap();
+            let (result, _) = run(options, &[], &[], false).await;
+            assert!(result.unwrap_err().contains("only apply to local"));
+        }
+    }
+
+    #[tokio::test]
+    async fn additional_local_clients_print_configuration_without_writing() {
+        for (target, expected) in [
+            ("gemini-cli", "~/.gemini/settings.json"),
+            ("cursor", "~/.cursor/mcp.json"),
+            ("openclaw", "openclaw mcp doctor whoop --probe"),
+            ("perplexity", "PerplexityXPC"),
+            ("vscode", "code --add-mcp"),
+        ] {
+            let path = temp_path();
+            let (result, output) = run(
+                SetupOptions {
+                    client: Some(target.into()),
+                    client_id: Some("id".into()),
+                    client_secret: Some("secret".into()),
+                    telemetry: Some(false),
+                    config_path: Some(path.clone()),
+                    ..Default::default()
+                },
+                &[],
+                &[],
+                false,
+            )
+            .await;
+            assert!(result.is_ok(), "{target}: {result:?}");
+            assert!(output.contains(expected), "{target}: {output}");
+            assert!(output.contains("/usr/local/bin/whoop-mcp"));
+            assert!(output.contains("WHOOP_MCP_TELEMETRY"));
+            assert!(!path.exists());
+        }
+    }
+
+    #[tokio::test]
+    async fn claude_alias_writes_desktop_config() {
+        let path = temp_path();
+        let (result, _) = run(
+            SetupOptions {
+                client: Some("claude".into()),
+                client_id: Some("id".into()),
+                client_secret: Some("secret".into()),
+                telemetry: Some(false),
+                config_path: Some(path.clone()),
+                ..Default::default()
+            },
+            &[],
+            &[],
+            false,
+        )
+        .await;
+        assert!(result.is_ok());
+        let config: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            config["mcpServers"]["whoop"]["command"],
+            "/usr/local/bin/whoop-mcp"
+        );
+        std::fs::remove_file(&path).unwrap();
+        std::fs::remove_dir(path.parent().unwrap()).unwrap();
     }
 
     #[test]

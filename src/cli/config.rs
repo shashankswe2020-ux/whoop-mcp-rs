@@ -4,7 +4,21 @@ use serde_json::{Map, Value, json};
 use std::path::PathBuf;
 
 /// Supported client targets.
-pub const CLIENT_TARGETS: [&str; 4] = ["claude-desktop", "claude-code", "codex", "copilot"];
+pub const CLIENT_TARGETS: [&str; 13] = [
+    "claude-desktop",
+    "claude-code",
+    "codex",
+    "copilot",
+    "claude",
+    "claude-web",
+    "chatgpt",
+    "grok",
+    "perplexity",
+    "gemini-cli",
+    "cursor",
+    "vscode",
+    "openclaw",
+];
 
 const SERVER_NAME: &str = "whoop";
 
@@ -125,6 +139,81 @@ pub fn generate_copilot_command(env: &ServerEnv, command: &str) -> String {
     format!("code --add-mcp {}", shell_quote(&payload.to_string()))
 }
 
+/// Configuration fragments for clients whose settings are merged by the user.
+pub fn generate_local_setup_instructions(
+    target: &str,
+    env: &ServerEnv,
+    command: &str,
+) -> Option<String> {
+    let entry = generate_claude_desktop_entry(env, command);
+    let warning = "Contains credentials: keep this private and out of version control.\n";
+    match target {
+        "gemini-cli" | "cursor" => {
+            let (path, source) = if target == "cursor" {
+                ("~/.cursor/mcp.json", "https://cursor.com/docs/context/mcp")
+            } else {
+                (
+                    "~/.gemini/settings.json",
+                    "https://geminicli.com/docs/tools/mcp-server/",
+                )
+            };
+            let config = json!({"mcpServers": {"whoop": entry}});
+            Some(format!(
+                "Merge this into {path}, preserving other settings and servers:\n{warning}\n{config:#}\n\nRestart the client and approve the WHOOP server. Keep the binary at the configured absolute path.\n{source}\n"
+            ))
+        }
+        "openclaw" => {
+            let config = json!({"mcp": {"servers": {"whoop": {
+                "transport": "stdio", "command": command, "args": [], "env": entry_env(env),
+            }}}});
+            Some(format!(
+                "In OpenClaw Settings > MCP, merge this into the scoped config editor, preserving other settings and servers:\n{warning}\n{config:#}\n\nUse a current OpenClaw version with native mcp.servers support (not the separate mcporter registry).\nThe server runs on the Gateway host; the binary and WHOOP authorization must be available there.\nVerify after saving: openclaw mcp doctor whoop --probe\nhttps://docs.openclaw.ai/tools/mcp\n"
+            ))
+        }
+        "perplexity" => {
+            let mut vars = format!(
+                "WHOOP_CLIENT_ID={} WHOOP_CLIENT_SECRET={}",
+                credential(env, "WHOOP_CLIENT_ID"),
+                credential(env, "WHOOP_CLIENT_SECRET"),
+            );
+            for (key, value) in telemetry_settings(env) {
+                vars.push_str(&format!(" {key}={}", shell_quote(&value)));
+            }
+            Some(format!(
+                "Perplexity local MCP requires the macOS app and PerplexityXPC helper.\nOpen Plugins > Add custom > Simple, name it whoop, and paste this launch command:\n{warning}\n  env {vars} {}\n\nSave, wait for Running, then enable it under Sources. Keep the binary at the configured absolute path.\nFor web/non-macOS clients, use Perplexity's remote connector workflow and an authenticated HTTPS deployment instead; availability depends on your account.\nhttps://www.perplexity.ai/help-center/en/articles/11502712-local-and-remote-mcps-for-perplexity\n",
+                shell_quote(command)
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Remote guidance never consumes WHOOP credentials or performs I/O.
+pub fn remote_setup_instructions(target: &str) -> Option<String> {
+    let instructions = match target {
+        "claude-web" => "Claude web/mobile: in Settings > Connectors, add a custom connector using your public /mcp URL. Configure the existing OAuth connector on the host and enter its connector password on the host's authorization page.\nhttps://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp".to_string(),
+        "chatgpt" => "ChatGPT: use a custom MCP app/connector in an account/workspace with developer mode enabled. Supply your public /mcp URL and configure OAuth. Availability and admin approval depend on your plan/workspace. ChatGPT is not the Codex CLI.\nhttps://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt".to_string(),
+        "grok" => {
+            let tool = json!({
+                "type": "mcp",
+                "server_label": "whoop",
+                "server_url": "https://YOUR_HOST/mcp",
+                "authorization": "YOUR_MCP_AUTH_TOKEN",
+            });
+            format!("Grok support here means the xAI API remote MCP tool, not a verified custom-connector feature in the consumer Grok chat app. Add this tool to your API request (replace both placeholders; never use a WHOOP token):\n{tool:#}\nThe xAI API credential is separate from MCP_AUTH_TOKEN.\nhttps://docs.x.ai/developers/tools/remote-mcp")
+        }
+        _ => return None,
+    };
+    Some(format!(
+        "Remote setup guidance only: not deployed or verified.\n\n{instructions}\n\n\
+        Deploy either implementation with MCP_TRANSPORT=http behind public HTTPS; the MCP URL is https://YOUR_HOST/mcp (replace YOUR_HOST). Local stdio and localhost are not reachable by cloud clients.\n\
+        Keep WHOOP credentials and private tokens on the server host. Bootstrap WHOOP authorization there before connecting; this is a single-account service, not a multi-user relay.\n\
+        Keep MCP_AUTH_TOKEN authentication enabled. For OAuth clients, also configure PUBLIC_URL, MCP_CONNECTOR_PASSWORD and exact ALLOWED_REDIRECT_URIS. The existing connector uses one static MCP_OAUTH_CLIENT_ID (default whoop-mcp-connector); configure that client ID in the app where supported. Clients requiring dynamic registration or incompatible OAuth flows may need server changes, outside this setup command.\n\
+        Do not disable authentication to bypass incompatibilities. Setup does not provision hosting, change OAuth, or test the client connection.\n\
+        Deployment prerequisites: https://github.com/shashankswe2020-ux/whoop-mcp/blob/main/references/deployment.md\n"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,6 +224,44 @@ mod tests {
         env.insert("WHOOP_CLIENT_SECRET".into(), Value::from("s'cret"));
         env.insert("WHOOP_MCP_TELEMETRY".into(), Value::from("0"));
         env
+    }
+
+    #[test]
+    fn additional_local_configs_have_documented_shapes() {
+        for target in ["gemini-cli", "cursor", "openclaw"] {
+            let text =
+                generate_local_setup_instructions(target, &env(), "/path with spaces/whoop-mcp")
+                    .unwrap();
+            let config: Value =
+                serde_json::from_str(&text[text.find('{').unwrap()..=text.rfind('}').unwrap()])
+                    .unwrap();
+            let entry = generate_claude_desktop_entry(&env(), "/path with spaces/whoop-mcp");
+            if target == "openclaw" {
+                assert_eq!(config["mcp"]["servers"]["whoop"]["transport"], "stdio");
+                assert_eq!(
+                    config["mcp"]["servers"]["whoop"]["command"],
+                    entry["command"]
+                );
+                assert_eq!(config["mcp"]["servers"]["whoop"]["args"], json!([]));
+                assert_eq!(config["mcp"]["servers"]["whoop"]["env"], entry["env"]);
+            } else {
+                assert_eq!(config, json!({"mcpServers": {"whoop": entry}}));
+            }
+        }
+    }
+
+    #[test]
+    fn perplexity_command_quotes_credentials_and_binary_path() {
+        let text = generate_local_setup_instructions(
+            "perplexity",
+            &env(),
+            "/path with 'quotes'/whoop-mcp",
+        )
+        .unwrap();
+        assert!(text.contains("macOS"));
+        assert!(text.contains("env WHOOP_CLIENT_ID='id'"));
+        assert!(text.contains("WHOOP_CLIENT_SECRET='s'\\''cret'"));
+        assert!(text.contains("WHOOP_MCP_TELEMETRY='0' '/path with '\\''quotes'\\''/whoop-mcp'"));
     }
 
     #[test]
