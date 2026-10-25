@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 
 const DEFAULT_TELEMETRY_ENDPOINT: &str =
     "https://whoop-mcp-telemetry.whoop-ai-mcp.workers.dev/events";
+const SPONSOR_URL: &str = "https://buymeacoffee.com/shashanksw9";
 
 /// Parsed `setup` flags.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -124,6 +125,12 @@ fn read_existing_creds(path: &Path) -> Option<(String, String)> {
     let id = env_string(&env, "WHOOP_CLIENT_ID")?.trim().to_string();
     let secret = env_string(&env, "WHOOP_CLIENT_SECRET")?.trim().to_string();
     (!id.is_empty() && !secret.is_empty()).then_some((id, secret))
+}
+
+fn write_sponsor_request(prompter: &mut dyn Prompter) {
+    prompter.write(&format!(
+        "If WHOOP MCP helps you, please consider sponsoring the project:\n{SPONSOR_URL}\n"
+    ));
 }
 
 fn oauth_config(client_id: &str, client_secret: &str) -> OAuthConfig {
@@ -356,6 +363,7 @@ pub async fn run_setup(
             return Err("Credential, --verify, --config-path and --telemetry options only apply to local client setup.".into());
         }
         deps.prompter.write(&instructions);
+        write_sponsor_request(deps.prompter);
         return Ok(Map::from_iter([(
             "WHOOP_MCP_TELEMETRY".into(),
             Value::from("0"),
@@ -399,6 +407,7 @@ pub async fn run_setup(
             env.extend(consent.clone());
             write_claude_desktop_config(&desktop_path, &env, &deps.command, deps.prompter, true)?;
         }
+        write_sponsor_request(deps.prompter);
         return Ok(consent);
     }
 
@@ -488,6 +497,7 @@ pub async fn run_setup(
             deps.prompter.write(&format!("\n{instructions}\n"));
         }
     }
+    write_sponsor_request(deps.prompter);
     Ok(consent)
 }
 
@@ -676,6 +686,12 @@ mod tests {
         dir.join("claude_desktop_config.json")
     }
 
+    fn assert_sponsor_request_last(output: &str) {
+        assert!(output.trim_end().ends_with(
+            "If WHOOP MCP helps you, please consider sponsoring the project:\nhttps://buymeacoffee.com/shashanksw9"
+        ));
+    }
+
     fn never_auth(_: OAuthConfig) -> BoxFuture<'static, Result<String, String>> {
         Box::pin(async { Err("should not authenticate".to_string()) })
     }
@@ -768,6 +784,7 @@ mod tests {
             assert!(output.contains("not deployed or verified"));
             assert!(!output.contains("WHOOP Client Secret"));
             assert!(!output.contains("Share this usage metadata?"));
+            assert_sponsor_request_last(&output);
             assert!(output.contains(if target == "grok" { "xAI API" } else { "OAuth" }));
         }
     }
@@ -899,6 +916,7 @@ mod tests {
             "my-id"
         );
         assert!(output.contains("Previous config backed up to:"));
+        assert_sponsor_request_last(&output);
         assert!(PathBuf::from(format!("{}.bak", path.display())).exists());
     }
 
@@ -915,6 +933,7 @@ mod tests {
         assert!(result.is_ok());
         assert!(output.contains("Profile OK: {\"user_id\":1}"));
         assert!(output.contains("claude mcp add whoop -e WHOOP_CLIENT_ID='id'"));
+        assert_sponsor_request_last(&output);
     }
 
     #[tokio::test]
@@ -930,6 +949,7 @@ mod tests {
         let (result, output) = run(options, &[], &[], false).await;
         assert_eq!(result.unwrap()["WHOOP_MCP_TELEMETRY"], "0");
         assert!(output.contains("Existing whoop entry found"));
+        assert_sponsor_request_last(&output);
 
         std::fs::write(&path, "{not json").unwrap();
         let options = SetupOptions {
