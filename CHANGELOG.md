@@ -2,12 +2,16 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-25
+
 - Extend setup with Gemini CLI, Cursor, VS Code, OpenClaw and Perplexity macOS
   configurations, plus the `claude` alias for Claude Desktop.
 - Add guidance-only targets for Claude web/mobile, ChatGPT and Grok's xAI API,
   explicitly distinguishing remote hosting/OAuth prerequisites from local setup.
 - Preserve existing clients, telemetry defaults, transports, OAuth and token
   storage. Match the npm implementation's targets and platform limitations.
+- Update Rustls, Tokio and certificate dependencies to address the advisories
+  reported by the release dependency audit.
 
 ## 0.1.1 - 2026-10-09
 

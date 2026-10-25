@@ -1,6 +1,6 @@
 [package]
 name = "whoop-mcp"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Read-only WHOOP MCP server for recovery, sleep, HRV, strain, workouts, and personal health analytics in AI assistants (Rust port of whoop-ai-mcp)"
@@ -27,9 +27,9 @@ hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
 ring = "0.17"
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
-tokio = { version = "1.47", features = ["fs", "io-std", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1.53.3", features = ["fs", "io-std", "io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
 url = "2.5"
 
 [target.'cfg(unix)'.dependencies]
@@ -37,7 +37,7 @@ libc = "0.2"
 
 [dev-dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
-tokio = { version = "1.47", features = ["test-util"] }
+tokio = { version = "1.53.3", features = ["test-util"] }
 
 [profile.release]
 lto = true

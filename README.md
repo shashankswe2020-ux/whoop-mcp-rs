@@ -58,9 +58,9 @@ Manual Claude Desktop configuration:
 
 ## Client setup
 
-**Unreleased:** the additional targets below are available in source. Until the
-next crate release, use `cargo run -- setup --client=<target>` in this checkout.
-After publication, use `whoop-mcp setup --client=<target>`.
+The additional targets below require **0.2.0 or later**. Use
+`whoop-mcp setup --client=<target>`, or
+`cargo run -- setup --client=<target>` in a source checkout.
 
 | Assistant | Target | What setup does |
 |---|---|---|
@@ -76,7 +76,7 @@ After publication, use `whoop-mcp setup --client=<target>`.
 | OpenClaw | `openclaw` | Prints native `mcp.servers.whoop` for Settings > MCP |
 | Codex | `codex` | Prints a registration command; distinct from ChatGPT |
 
-For example, after installing a release with these targets:
+For example:
 
 ```bash
 whoop-mcp setup --client=gemini-cli
